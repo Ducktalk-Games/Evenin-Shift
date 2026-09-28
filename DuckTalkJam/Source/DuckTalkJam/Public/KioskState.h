@@ -87,7 +87,7 @@ public:
 
 #pragma region Achievements
 
-	/** AchievementId must match an Achievement_N_Id entry under [OnlineSubsystemSteam] in DefaultEngine.ini */
+	/** AchievementId is the Steamworks API name, i.e. the value of an Achievement_N_Id entry in DefaultEngine.ini (e.g. ACH_DAY_01) */
 	UFUNCTION(BlueprintCallable, Category = "Achievements")
 	void UnlockAchievement(FName AchievementId);
 
