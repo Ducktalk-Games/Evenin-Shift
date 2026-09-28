@@ -8,6 +8,8 @@
 #include "Engine/GameInstance.h"
 #include "KioskState.generated.h"
 
+class FUniqueNetId;
+
 UCLASS()
 class DUCKTALKJAM_API UKioskState : public UGameInstance
 {
@@ -83,9 +85,25 @@ public:
 
 #pragma endregion Flags
 
+#pragma region Achievements
+
+	/** AchievementId must match an Achievement_N_Id entry under [OnlineSubsystemSteam] in DefaultEngine.ini */
+	UFUNCTION(BlueprintCallable, Category = "Achievements")
+	void UnlockAchievement(FName AchievementId);
+
+#pragma endregion Achievements
+
 private:
 
 	void InitializeMusicComponents();
+
+	void QueryAchievements();
+	void OnQueryAchievementsComplete(const FUniqueNetId& PlayerId, const bool bWasSuccessful);
+	void WriteAchievement(FName AchievementId);
+
+	bool bAchievementsQueried = false;
+	bool bAchievementsQueryInFlight = false;
+	TArray<FName> PendingAchievements;
 
 	UPROPERTY()
 	TObjectPtr<UAudioComponent> MusicComponentA;

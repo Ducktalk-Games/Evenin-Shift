@@ -4,12 +4,17 @@
 
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "OnlineSubsystem.h"
+#include "Interfaces/OnlineAchievementsInterface.h"
+#include "Interfaces/OnlineIdentityInterface.h"
 
 void UKioskState::Init()
 {
 	Super::Init();
 
 	MusicVolume = 1.0f;
+
+	QueryAchievements();
 }
 
 void UKioskState::InitializeMusicComponents()
@@ -146,4 +151,67 @@ bool UKioskState::HasItem(FGameplayTag ItemTag)
 void UKioskState::RemoveItem(FGameplayTag ItemTag)
 {
 	Items.Remove(ItemTag);
+}
+
+void UKioskState::UnlockAchievement(FName AchievementId)
+{
+	if (AchievementId.IsNone()) return;
+
+	// Steam OSS rejects writes until the player's achievements have been queried
+	if (!bAchievementsQueried)
+	{
+		PendingAchievements.AddUnique(AchievementId);
+		QueryAchievements();
+		return;
+	}
+
+	WriteAchievement(AchievementId);
+}
+
+void UKioskState::QueryAchievements()
+{
+	if (bAchievementsQueried || bAchievementsQueryInFlight) return;
+
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	if (!OnlineSubsystem) return;
+
+	IOnlineIdentityPtr Identity = OnlineSubsystem->GetIdentityInterface();
+	IOnlineAchievementsPtr Achievements = OnlineSubsystem->GetAchievementsInterface();
+	if (!Identity || !Achievements) return;
+
+	FUniqueNetIdPtr UserId = Identity->GetUniquePlayerId(0);
+	if (!UserId) return;
+
+	bAchievementsQueryInFlight = true;
+	Achievements->QueryAchievements(*UserId, FOnQueryAchievementsCompleteDelegate::CreateUObject(this, &UKioskState::OnQueryAchievementsComplete));
+}
+
+void UKioskState::OnQueryAchievementsComplete(const FUniqueNetId& PlayerId, const bool bWasSuccessful)
+{
+	bAchievementsQueryInFlight = false;
+	if (!bWasSuccessful) return;
+
+	bAchievementsQueried = true;
+
+	for (const FName& AchievementId : PendingAchievements) WriteAchievement(AchievementId);
+	PendingAchievements.Empty();
+}
+
+void UKioskState::WriteAchievement(FName AchievementId)
+{
+	IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get();
+	if (!OnlineSubsystem) return;
+
+	IOnlineIdentityPtr Identity = OnlineSubsystem->GetIdentityInterface();
+	IOnlineAchievementsPtr Achievements = OnlineSubsystem->GetAchievementsInterface();
+	if (!Identity || !Achievements) return;
+
+	FUniqueNetIdPtr UserId = Identity->GetUniquePlayerId(0);
+	if (!UserId) return;
+
+	// 100% progress unlocks the achievement
+	FOnlineAchievementsWriteRef WriteObject = MakeShared<FOnlineAchievementsWrite, ESPMode::ThreadSafe>();
+	WriteObject->SetFloatStat(AchievementId.ToString(), 100.0f);
+
+	Achievements->WriteAchievements(*UserId, WriteObject);
 }
