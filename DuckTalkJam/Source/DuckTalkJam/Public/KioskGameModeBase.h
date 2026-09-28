@@ -184,6 +184,8 @@ public:
 
 	UPROPERTY(Editanywhere, BlueprintReadWrite)
 	bool b_DialogueFinished = false;
+	
+	bool b_DecisionHandled = false;
 
 	void TryAdvanceEncounter();
 	void AdvanceEncounter();

@@ -29,6 +29,7 @@ void AKioskGameModeBase::BeginPlay()
 
 void AKioskGameModeBase::StartRound()
 {
+	Mistakes = 0;
 	SetKioskPhase(EKioskPhase::Playing);
 	PayDocks.Empty();
 	OnStartRound.Broadcast();
@@ -42,6 +43,13 @@ void AKioskGameModeBase::EndRound()
 	if (!KioskState) return;
 
 	KioskState->Coins = FMath::Max(KioskState->Coins + DayWage - (Mistakes * MistakePenalty), 0);
+
+	// ACH_DAY_01 .. ACH_DAY_05 for the day just completed
+	if (KioskState->Day >= 1 && KioskState->Day <= 5)
+	{
+		KioskState->UnlockAchievement(FName(*FString::Printf(TEXT("ACH_DAY_%02d"), KioskState->Day)));
+	}
+
 	++KioskState->Day;
 
 	OnEndRound.Broadcast();
@@ -147,7 +155,6 @@ void AKioskGameModeBase::OrchestrateEncounter(bool& bEncountersLeft)
 	if (!KioskState) return;
 	if (b_EncounterInProgress || EncountersPerDay.IsEmpty()) return;
 
-
 	UE_LOG(LogKiosk, Log,
 		TEXT("Looking for encounter configuration for Day %d."),
 		KioskState->Day
@@ -205,12 +212,14 @@ void AKioskGameModeBase::OrchestrateEncounter(bool& bEncountersLeft)
 	b_EncounterInProgress = true;
 	b_EncounterResolved = false;
 	b_DialogueFinished = false;
+	b_DecisionHandled = false;
 
 	UE_LOG(LogKiosk, Log,
-		TEXT("Encounter state initialized. InProgress: %s | Resolved: %s | DialogueFinished: %s"),
+		TEXT("Encounter state initialized. InProgress: %s | Resolved: %s | DialogueFinished: %s | DecisionHandled: %s"),
 		b_EncounterInProgress ? TEXT("true") : TEXT("false"),
 		b_EncounterResolved ? TEXT("true") : TEXT("false"),
-		b_DialogueFinished ? TEXT("true") : TEXT("false")
+		b_DialogueFinished ? TEXT("true") : TEXT("false"),
+		b_DecisionHandled ? TEXT("true") : TEXT("false")
 	);
 
 	bEncountersLeft = DayConfig->CharacterOrder.IsValidIndex(CurrentEncounterIndex + 1);
@@ -410,7 +419,10 @@ void AKioskGameModeBase::OnGameplayEventCompleted(AKioskGameplayEvent* Event)
 void AKioskGameModeBase::ProcessCharacter(AKioskCharacter* Character)
 {
 	if (!IsGamePhase(EKioskPhase::Playing)) return;
+	if (!b_EncounterInProgress || b_DecisionHandled) return;
 	if (!CurrentCharacterEntry.CharacterClass || !Character) return;
+
+	b_DecisionHandled = true;
 
 	Character->GrantedEntry();
 
@@ -440,7 +452,10 @@ void AKioskGameModeBase::ProcessCharacter(AKioskCharacter* Character)
 void AKioskGameModeBase::TurnAwayCharacter(AKioskCharacter* Character)
 {
 	if (!IsGamePhase(EKioskPhase::Playing)) return;
+	if (!b_EncounterInProgress || b_DecisionHandled) return;
 	if (!CurrentCharacterEntry.CharacterClass || !Character) return;
+
+	b_DecisionHandled = true;
 
 	Character->RejectedEntry();
 
@@ -597,7 +612,9 @@ ERuleEvaluation AKioskGameModeBase::EvaluateCharacterRules() const
 
 void AKioskGameModeBase::PenalizePlayer(AKioskCharacter* Character, FGameplayTagContainer Traits, int GameDay)
 {
+	const int32 Before = Mistakes;
 	++Mistakes;
+	UE_LOG(LogKiosk, Warning, TEXT("Penalty: Mistakes %d -> %d"), Before, Mistakes);
 	OnPenalizePlayer.Broadcast(Character, Traits, KioskState->Day);
 }
 
